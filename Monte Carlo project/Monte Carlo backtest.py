@@ -32,9 +32,12 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import fix_yahoo_finance as yf
+#import fix_yahoo_finance as yf
+import ffn as f
 import random as rd
 from sklearn.model_selection import train_test_split
+from math import sqrt
+from sklearn.metrics import mean_squared_error
 
 
 # In[2]:
@@ -218,10 +221,10 @@ def monte_carlo(data,testsize=0.5,simulation=100,**kwargs):
     #we only care about close price
     #if there has been dividend issued
     #we use adjusted close price instead
-    df=df.loc[:,['Close']]
-        
+    df=df.loc[:,['tefmc']]
+    
     #here we use log return
-    returnn=np.log(df['Close'].iloc[1:]/df['Close'].shift(1).iloc[1:])
+    returnn=np.log(df['tefmc'].iloc[1:]/df['tefmc'].shift(1).iloc[1:])
     drift=returnn.mean()-returnn.var()/2
     
     #we use dictionary to store predicted time series
@@ -230,12 +233,12 @@ def monte_carlo(data,testsize=0.5,simulation=100,**kwargs):
     #we use geometric brownian motion to compute the next price
     # https://en.wikipedia.org/wiki/Geometric_Brownian_motion
     for counter in range(simulation):
-        d[counter]=[df['Close'].iloc[0]]
+        d[counter]=[df['tefmc'].iloc[0]]
       
         #we dont just forecast the future
         #we need to compare the forecast with the historical data as well
         #thats why the data range is training horizon plus testing horizon
-        for i in range(len(df)+forecast_horizon-1):
+        for j in range(len(df)+forecast_horizon-1):
          
             #we use standard normal distribution to generate pseudo random number
             #which is sufficient for our monte carlo simulation
@@ -253,7 +256,7 @@ def monte_carlo(data,testsize=0.5,simulation=100,**kwargs):
     for counter in range(simulation):
     
         temp=np.std(np.subtract(
-                    d[counter][:len(df)],df['Close']))
+                    d[counter][:len(df)],df['tefmc']))
         if temp<std:
             std=temp
             pick=counter
@@ -265,7 +268,9 @@ def monte_carlo(data,testsize=0.5,simulation=100,**kwargs):
 
 #result plotting
 def plot(df,forecast_horizon,d,pick,ticker):
-    
+
+    import matplotlib
+    matplotlib.use('tkagg')
     #the first plot is to plot every simulation
     #and highlight the best fit with the actual dataset
     #we only look at training horizon in the first figure
@@ -280,7 +285,7 @@ def plot(df,forecast_horizon,d,pick,ticker):
     ax.plot(df.index[:len(df)-forecast_horizon], \
             d[pick][:len(df)-forecast_horizon], \
             c='#5398d9',linewidth=5,label='Best Fitted')
-    df['Close'].iloc[:len(df)-forecast_horizon].plot(c='#d75b66',linewidth=5,label='Actual')
+    df['tefmc'].iloc[:len(df)-forecast_horizon].plot(c='#d75b66',linewidth=5,label='Actual')
     plt.title(f'Monte Carlo Simulation\nTicker: {ticker}')
     plt.legend(loc=0)
     plt.ylabel('Price')
@@ -291,25 +296,32 @@ def plot(df,forecast_horizon,d,pick,ticker):
     #we compare the best fitted plus forecast with the actual history
     #the figure reveals why monte carlo simulation in trading is house of cards
     #it is merely illusion that monte carlo simulation can forecast any asset price or direction
+    #calculates the mse error between best fit and actual
+
+    rmse =sqrt(mean_squared_error(d[pick], df['tefmc']))
+    print('Mean squared error: %.2f'%(rmse))
+
     ax=plt.figure(figsize=(10,5)).add_subplot(111)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     plt.plot(d[pick],label='Best Fitted',c='#edd170')
-    plt.plot(df['Close'].tolist(),label='Actual',c='#02231c')
+    plt.plot(df['tefmc'].tolist(),label='Actual',c='#02231c')
     plt.axvline(len(df)-forecast_horizon,linestyle=':',c='k')
     plt.text(len(df)-forecast_horizon-50, \
-             max(max(df['Close']),max(d[pick])),'Training', \
+             max(max(df['tefmc']),max(d[pick])),'Training', \
              horizontalalignment='center', \
              verticalalignment='center')
     plt.text(len(df)-forecast_horizon+50, \
-             max(max(df['Close']),max(d[pick])),'Testing', \
+             max(max(df['tefmc']),max(d[pick])),'Testing', \
              horizontalalignment='center', \
              verticalalignment='center')
     plt.title(f'Training versus Testing\nTicker: {ticker}\n')
     plt.legend(loc=0)
     plt.ylabel('Price')
     plt.xlabel('T+Days')
+    plt.savefig('Monte Carlo project\\preview\\versus tefmc.png')
     plt.show()
+    
 
 
 # In[5]:
@@ -319,7 +331,7 @@ def plot(df,forecast_horizon,d,pick,ticker):
 #simu_end denotes the maximum simulation number
 #sim_delta denotes how many steps it takes to reach the max from the min
 #its kinda like range(simu_start,simu_end,simu_delta)
-def test(df,ticker,simu_start=100,simu_end=1000,simu_delta=100,**kwargs):
+def test(df,ticker,simu_start=100,simu_end=700,simu_delta=100,**kwargs):
     
     table=pd.DataFrame()
     table['Simulations']=np.arange(simu_start,simu_end+simu_delta,simu_delta)
@@ -340,7 +352,7 @@ def test(df,ticker,simu_start=100,simu_end=1000,simu_delta=100,**kwargs):
         forecast_horizon,d,pick=monte_carlo(df,simulation=i,**kwargs)
         
         actual_return=np.sign( \
-                              df['Close'].iloc[len(df)-forecast_horizon]-df['Close'].iloc[-1])
+                              df['tefmc'].iloc[len(df)-forecast_horizon]-df['tefmc'].iloc[-1])
         
         best_fitted_return=np.sign(d[pick][len(df)-forecast_horizon]-d[pick][-1])
         table.at[i,'Prediction']=np.where(actual_return==best_fitted_return,1,-1)
@@ -359,24 +371,26 @@ def test(df,ticker,simu_start=100,simu_end=1000,simu_delta=100,**kwargs):
     plt.xlabel('Prediction Accuracy')
     plt.ylabel('Times of Simulation')
     plt.title(f"Prediction accuracy doesn't depend on the numbers of simulation.\nTicker: {ticker}\n")
+    plt.savefig('Monte Carlo project\\preview\\accumonte tefmc.png')
     plt.show()
 
 
 # In[6]:
 
-#lets try something extreme, pick ge, the worst performing stock in 2018
+#lets try something extreme, pick tef, one of the worst performing stock in ibex35
 #see how monte carlo works for both direction prediction and fat tail simulation
 #why the extreme? well if we are risk quants, we care about value at risk, dont we
 #if quants only look at one sigma event, the portfolio performance would be devastating
 def main():
     
-    stdate='2016-01-15'
-    eddate='2019-01-15'
-    ticker='GE'
+    stdate='2019-01-01'
+    eddate='2021-03-30'
+    ticker='tef.mc'
 
-    df=yf.download(ticker,start=stdate,end=eddate)
+    df=f.get(ticker,start=stdate,end=eddate)
     df.index=pd.to_datetime(df.index)
-    
+    df.head()
+
     forecast_horizon,d,pick=monte_carlo(df)
     plot(df,forecast_horizon,d,pick,ticker)
     test(df,ticker)
@@ -384,3 +398,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# %%
